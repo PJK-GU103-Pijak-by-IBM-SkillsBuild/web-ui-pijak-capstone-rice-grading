@@ -1,4 +1,5 @@
 import { useState } from 'react';
+const API_URL = import.meta.env.VITE_API_URL;
 
 function App() {
   const [image, setImage] = useState(null);
@@ -30,7 +31,7 @@ function App() {
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 90) return 90;
-        return prev + Math.floor(Math.random() * 10) + 5; // Naik acak sekitar 5-15%
+        return prev + Math.floor(Math.random() * 3) + 1; // naik 1-3% per tick
       });
     }, 300);
 
@@ -39,45 +40,45 @@ function App() {
 
     try {
       // Menggunakan endpoint dari spesifikasi openapi.yaml
-      const response = await fetch('https://pijak.arykurnia.my.id/api/v1/predict', {
+        const response = await fetch(API_URL + '/predict',
+      {
         method: 'POST',
         body: formData,
       });
 
       const data = await response.json();
 
+      // Stop simulasi
+      clearInterval(progressInterval);
+
+      // Animasi cepat dari posisi sekarang ke 100%
+      const fillToHundred = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 100) {
+            clearInterval(fillToHundred);
+            return 100;
+          }
+          return prev + 5; // naik 5% per tick → cepat tapi smooth
+        });
+      }, 30); // 30ms per tick → ~600ms untuk naik 40% (dari 60% ke 100%)
+
       // Bersihkan interval dan set progress mentok ke 100% karena respons sudah diterima
       clearInterval(progressInterval);
       setProgress(100);
 
-      // Beri sedikit jeda 500ms agar user bisa melihat bar mencapai 100% sebelum hasil muncul
+      // Tampilkan hasil setelah bar penuh
       setTimeout(() => {
         if (response.ok && data.success) {
-          const label = data.data.label;
-
-          let result;
-          switch (data.data.label) {
-            case 'Ipsala':
-              result = 'Bagus';
-              break;
-            case 'Arborio':
-              result = 'Sedang';
-              break;
-            case 'Basmati':
-              result = 'Buruk';
-              break;
-            default:
-              result = label;
-          }
-          
-          setResult({ label: result, confidence: data.data.confidence });
+          setResult({ label: data.data.label, confidence: data.data.confidence });
         } else {
           setError(data.message || 'Terjadi kesalahan pada server');
         }
         setIsLoading(false);
-      }, 500);
+      }, 700); // sedikit lebih lama dari animasi fill
 
     } catch (err) {
+      clearInterval(progressInterval);
+      setProgress(0);
       setError('Gagal terhubung ke API. Pastikan server backend berjalan.');
     } finally {
       setIsLoading(false);
@@ -88,11 +89,11 @@ function App() {
   if (!label) return 'bg-slate-100 text-slate-800 border-slate-200';
   
   switch (label.toLowerCase()) {
-    case 'bagus':
+    case 'premium':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    case 'sedang': 
+    case 'medium': 
       return 'bg-amber-100 text-amber-800 border-amber-200';
-    case 'buruk': 
+    case 'rendah': 
       return 'bg-rose-100 text-rose-800 border-rose-200';
     default: 
       return 'bg-blue-100 text-blue-800 border-blue-200'; // Default warna biru modern untuk label lain
