@@ -8,6 +8,7 @@ function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
+  const [phase, setPhase] = useState(null); // 'uploading' | 'classifying' | null
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -26,62 +27,80 @@ function App() {
     setError(null);
     setResult(null);
     setProgress(0);
-
-    // Simulasi progress berjalan naik acak hingga mentok di 90% selama menunggu
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 90) return 90;
-        return prev + Math.floor(Math.random() * 3) + 1; // naik 1-3% per tick
-      });
-    }, 300);
+    setPhase('uploading');
 
     const formData = new FormData();
     formData.append('image', image);
 
     try {
-      // Menggunakan endpoint dari spesifikasi openapi.yaml
-        const response = await fetch(API_URL + '/predict',
-      {
-        method: 'POST',
-        body: formData,
+      // === FASE 1: Upload via XHR (real progress 0–100%) ===
+      const data = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+
+        xhr.onload = () => {
+          // Pastikan bar upload bener-bener 100% sebelum lanjut
+          setProgress(100);
+          try {
+            resolve({ status: xhr.status, body: JSON.parse(xhr.responseText) });
+          } catch {
+            reject(new Error('Response bukan JSON'));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.ontimeout = () => reject(Object.assign(new Error('Timeout'), { name: 'AbortError' }));
+        xhr.timeout = 30000;
+
+        xhr.open('POST', API_URL + '/predict');
+        xhr.send(formData);
       });
 
-      const data = await response.json();
+      // Jeda sebentar biar user sempat lihat 100% upload
+      await new Promise((r) => setTimeout(r, 400));
 
-      // Stop simulasi
-      clearInterval(progressInterval);
-
-      // Animasi cepat dari posisi sekarang ke 100%
-      const fillToHundred = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(fillToHundred);
-            return 100;
-          }
-          return prev + 5; // naik 5% per tick → cepat tapi smooth
-        });
-      }, 30); // 30ms per tick → ~600ms untuk naik 40% (dari 60% ke 100%)
-
-      // Bersihkan interval dan set progress mentok ke 100% karena respons sudah diterima
-      clearInterval(progressInterval);
-      setProgress(100);
-
-      // Tampilkan hasil setelah bar penuh
-      setTimeout(() => {
-        if (response.ok && data.success) {
-          setResult({ label: data.data.label, confidence: data.data.confidence });
-        } else {
-          setError(data.message || 'Terjadi kesalahan pada server');
-        }
-        setIsLoading(false);
-      }, 700); // sedikit lebih lama dari animasi fill
-
-    } catch (err) {
-      clearInterval(progressInterval);
+      // === TRANSISI: Reset bar ===
       setProgress(0);
-      setError('Gagal terhubung ke API. Pastikan server backend berjalan.');
+      setPhase('classifying');
+
+      // Jeda singkat setelah reset biar animasi CSS sempat render ke 0%
+      await new Promise((r) => setTimeout(r, 100));
+
+      // === FASE 2: Simulasi klasifikasi (0–100%) ===
+      await new Promise((resolve) => {
+        const interval = setInterval(() => {
+          setProgress((prev) => {
+            if (prev >= 100) {
+              clearInterval(interval);
+              resolve();
+              return 100;
+            }
+            return Math.min(prev + Math.floor(Math.random() * 4) + 2, 100);
+          });
+        }, 200);
+      });
+
+      if (data.status === 200 && data.body.success) {
+        setResult({ label: data.body.data.label, confidence: data.body.data.confidence });
+      } else {
+        setError(data.body.message || 'Terjadi kesalahan pada server');
+      }
+    } catch (err) {
+      setProgress(0);
+      setPhase(null);
+      if (err.name === 'AbortError') {
+        setError('Request timeout. Server terlalu lama merespons.');
+      } else {
+        setError('Gagal terhubung ke API. Pastikan server backend berjalan.');
+      }
     } finally {
       setIsLoading(false);
+      setPhase(null);
     }
   };
 
@@ -149,21 +168,30 @@ function App() {
           </button>
 
           {/* === PROGRESS BAR SECTION === */}
+          {/* Progress bar label — update teks sesuai fase */}
           {isLoading && (
-            <div className="mt-4 animate-fade-in">
+            <div className="mt-4">
               <div className="flex justify-between mb-1.5">
-                <span className="text-xs font-semibold text-blue-600 animate-pulse">
-                  Menganalisis Gambar...
+                <span className="text-xs font-semibold animate-pulse"
+                  style={{ color: phase === 'uploading' ? '#2563eb' : '#0d9488' }}
+                >
+                  {phase === 'uploading' ? 'Mengunggah gambar...' : 'Menganalisis gambar...'}
                 </span>
-                <span className="text-xs font-bold text-blue-600">
+                <span className="text-xs font-bold"
+                  style={{ color: phase === 'uploading' ? '#2563eb' : '#0d9488' }}
+                >
                   {progress}%
                 </span>
               </div>
               <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
                 <div
-                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${progress}%` }}
-                ></div>
+                  className="h-2.5 rounded-full"
+                  style={{
+                    width: `${progress}%`,
+                    backgroundColor: phase === 'uploading' ? '#2563eb' : '#0d9488',
+                    transition: progress === 0 ? 'none' : 'width 0.3s ease-out, background-color 0.3s',
+                  }}
+                />
               </div>
             </div>
           )}
