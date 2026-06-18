@@ -1,17 +1,67 @@
-# React + Vite
+# Rice Quality Prediction — Frontend
+**ID TIM: PJK-GU103**
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Antarmuka web untuk sistem klasifikasi kualitas beras berbasis AI.  
+Dibangun dengan **React + Vite**, terhubung ke inference API berbasis Flask.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Tentang Proyek
 
-## React Compiler
+Frontend ini merupakan bagian dari proyek capstone **Rice Quality Prediction** yang memungkinkan pengguna mengunggah gambar beras dan mendapatkan hasil klasifikasi kualitas secara real-time berdasarkan standar **SNI 6128:2020**.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## Expanding the ESLint configuration
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
-# web-ui-pijak-capstone-rice-grading
+---
+
+## Teknologi
+
+- [React](https://react.dev/)
+- [Vite](https://vitejs.dev/)
+- [Tailwind CSS](https://tailwindcss.com/)
+
+---
+
+## Setup & Menjalankan
+
+**Requirements:** Node.js 18+
+
+**1. Clone repository**
+```bash
+git clone https://github.com/pijak-team/pijak-capstone-rice-grading-frontend.git
+cd pijak-capstone-rice-grading-frontend
+```
+
+**2. Install dependencies**
+```bash
+npm install
+```
+
+**3. Setup environment**
+```bash
+cp .env.example .env
+```
+
+Isi `.env`:
+```env
+VITE_API_URL=https://pijak.arykurnia.my.id/api/v1
+```
+
+**4. Jalankan development server**
+```bash
+npm run dev
+```
+
+Aplikasi berjalan di `http://localhost:5173`
+
+---
+
+## Build untuk Production
+
+```bash
+npm run build
+```
+
+Output build tersedia di folder `dist/`.
+
+---

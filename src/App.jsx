@@ -1,4 +1,5 @@
 import { useState } from 'react';
+const API_URL = import.meta.env.VITE_API_URL;
 
 function App() {
   const [image, setImage] = useState(null);
@@ -7,6 +8,7 @@ function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
+  const [phase, setPhase] = useState(null); // 'uploading' | 'classifying' | null
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -25,62 +27,80 @@ function App() {
     setError(null);
     setResult(null);
     setProgress(0);
-
-    // Simulasi progress berjalan naik acak hingga mentok di 90% selama menunggu
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 90) return 90;
-        return prev + Math.floor(Math.random() * 10) + 5; // Naik acak sekitar 5-15%
-      });
-    }, 300);
+    setPhase('uploading');
 
     const formData = new FormData();
     formData.append('image', image);
 
     try {
-      // Menggunakan endpoint dari spesifikasi openapi.yaml
-      const response = await fetch('https://pijak.arykurnia.my.id/api/v1/predict', {
-        method: 'POST',
-        body: formData,
+      // === FASE 1: Upload via XHR (real progress 0–100%) ===
+      const data = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+
+        xhr.onload = () => {
+          // Pastikan bar upload bener-bener 100% sebelum lanjut
+          setProgress(100);
+          try {
+            resolve({ status: xhr.status, body: JSON.parse(xhr.responseText) });
+          } catch {
+            reject(new Error('Response bukan JSON'));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.ontimeout = () => reject(Object.assign(new Error('Timeout'), { name: 'AbortError' }));
+        xhr.timeout = 30000;
+
+        xhr.open('POST', API_URL + '/predict');
+        xhr.send(formData);
       });
 
-      const data = await response.json();
+      // Jeda sebentar biar user sempat lihat 100% upload
+      await new Promise((r) => setTimeout(r, 400));
 
-      // Bersihkan interval dan set progress mentok ke 100% karena respons sudah diterima
-      clearInterval(progressInterval);
-      setProgress(100);
+      // === TRANSISI: Reset bar ===
+      setProgress(0);
+      setPhase('classifying');
 
-      // Beri sedikit jeda 500ms agar user bisa melihat bar mencapai 100% sebelum hasil muncul
-      setTimeout(() => {
-        if (response.ok && data.success) {
-          const label = data.data.label;
+      // Jeda singkat setelah reset biar animasi CSS sempat render ke 0%
+      await new Promise((r) => setTimeout(r, 100));
 
-          let result;
-          switch (data.data.label) {
-            case 'Ipsala':
-              result = 'Bagus';
-              break;
-            case 'Arborio':
-              result = 'Sedang';
-              break;
-            case 'Basmati':
-              result = 'Buruk';
-              break;
-            default:
-              result = label;
-          }
-          
-          setResult({ label: result, confidence: data.data.confidence });
-        } else {
-          setError(data.message || 'Terjadi kesalahan pada server');
-        }
-        setIsLoading(false);
-      }, 500);
+      // === FASE 2: Simulasi klasifikasi (0–100%) ===
+      await new Promise((resolve) => {
+        const interval = setInterval(() => {
+          setProgress((prev) => {
+            if (prev >= 100) {
+              clearInterval(interval);
+              resolve();
+              return 100;
+            }
+            return Math.min(prev + Math.floor(Math.random() * 4) + 2, 100);
+          });
+        }, 200);
+      });
 
+      if (data.status === 200 && data.body.success) {
+        setResult({ label: data.body.data.label, confidence: data.body.data.confidence });
+      } else {
+        setError(data.body.message || 'Terjadi kesalahan pada server');
+      }
     } catch (err) {
-      setError('Gagal terhubung ke API. Pastikan server backend berjalan.');
+      setProgress(0);
+      setPhase(null);
+      if (err.name === 'AbortError') {
+        setError('Request timeout. Server terlalu lama merespons.');
+      } else {
+        setError('Gagal terhubung ke API. Pastikan server backend berjalan.');
+      }
     } finally {
       setIsLoading(false);
+      setPhase(null);
     }
   };
 
@@ -88,11 +108,11 @@ function App() {
   if (!label) return 'bg-slate-100 text-slate-800 border-slate-200';
   
   switch (label.toLowerCase()) {
-    case 'bagus':
+    case 'premium':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    case 'sedang': 
+    case 'medium': 
       return 'bg-amber-100 text-amber-800 border-amber-200';
-    case 'buruk': 
+    case 'rendah': 
       return 'bg-rose-100 text-rose-800 border-rose-200';
     default: 
       return 'bg-blue-100 text-blue-800 border-blue-200'; // Default warna biru modern untuk label lain
@@ -148,21 +168,30 @@ function App() {
           </button>
 
           {/* === PROGRESS BAR SECTION === */}
+          {/* Progress bar label — update teks sesuai fase */}
           {isLoading && (
-            <div className="mt-4 animate-fade-in">
+            <div className="mt-4">
               <div className="flex justify-between mb-1.5">
-                <span className="text-xs font-semibold text-blue-600 animate-pulse">
-                  Menganalisis Gambar...
+                <span className="text-xs font-semibold animate-pulse"
+                  style={{ color: phase === 'uploading' ? '#2563eb' : '#0d9488' }}
+                >
+                  {phase === 'uploading' ? 'Mengunggah gambar...' : 'Menganalisis gambar...'}
                 </span>
-                <span className="text-xs font-bold text-blue-600">
+                <span className="text-xs font-bold"
+                  style={{ color: phase === 'uploading' ? '#2563eb' : '#0d9488' }}
+                >
                   {progress}%
                 </span>
               </div>
               <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
                 <div
-                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${progress}%` }}
-                ></div>
+                  className="h-2.5 rounded-full"
+                  style={{
+                    width: `${progress}%`,
+                    backgroundColor: phase === 'uploading' ? '#2563eb' : '#0d9488',
+                    transition: progress === 0 ? 'none' : 'width 0.3s ease-out, background-color 0.3s',
+                  }}
+                />
               </div>
             </div>
           )}
